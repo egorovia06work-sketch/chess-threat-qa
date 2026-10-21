@@ -1,0 +1,103 @@
+/*
+ * Задача 2.25: Java-версия, модульные тесты с данными из базы данных,
+ * сохранение результатов и метрик кода в базу данных.
+ */
+
+plugins {
+    id 'application'
+    id 'jacoco'                 // покрытие кода и цикломатическая сложность
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform(libs.junit.bom)
+    testImplementation libs.junit.jupiter
+    testImplementation 'org.junit.platform:junit-platform-launcher'  // TestExecutionListener
+    testImplementation libs.sqlite.jdbc                               // JDBC-драйвер SQLite
+    testRuntimeOnly libs.slf4j.nop
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+application {
+    mainClass = 'chess.App'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('jar') {
+    manifest {
+        attributes('Main-Class': application.mainClass)
+    }
+}
+
+jacoco {
+    toolVersion = '0.8.11'
+}
+
+// ---------- база данных QA ----------
+def qaDir   = rootProject.layout.projectDirectory.dir('qa')
+def dbFile  = qaDir.file('qa.db').asFile
+def dbUrl   = "jdbc:sqlite:${dbFile.absolutePath.replace('\\', '/')}"
+def broken  = providers.gradleProperty('includeBroken').orElse('false')
+
+// Создание схемы и загрузка тестовых наборов: gradle initDb
+def initDb = tasks.register('initDb', JavaExec) {
+    group = 'qa'
+    description = 'Создаёт базу данных QA и загружает тестовые наборы (qa/schema.sql, qa/seed.sql).'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'chess.qa.DbInit'
+    systemProperty 'qa.db.url', dbUrl
+    args qaDir.file('schema.sql').asFile.path, qaDir.file('seed.sql').asFile.path
+}
+
+tasks.named('test') {
+    dependsOn initDb
+    useJUnitPlatform()
+    systemProperty 'qa.db.url', dbUrl
+    systemProperty 'qa.record', 'true'
+    systemProperty 'qa.includeBroken', broken.get()
+    inputs.property('includeBroken', broken)
+    outputs.upToDateWhen { false }        // данные в БД могли измениться — запускаем всегда
+    testLogging {
+        events 'failed', 'skipped'
+        exceptionFormat = 'short'
+        showStandardStreams = true
+    }
+    finalizedBy 'jacocoTestReport'
+}
+
+tasks.named('jacocoTestReport') {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+    finalizedBy 'saveMetrics'
+}
+
+// Метрики кода из отчёта JaCoCo -> база данных
+tasks.register('saveMetrics', JavaExec) {
+    group = 'qa'
+    description = 'Сохраняет покрытие и цикломатическую сложность (JaCoCo) в базу данных.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'chess.qa.MetricsRecorder'
+    systemProperty 'qa.db.url', dbUrl
+    args layout.buildDirectory.file('reports/jacoco/test/jacocoTestReport.xml').get().asFile.path
+}
+
+// История запусков из базы данных
+tasks.register('qaHistory', JavaExec) {
+    group = 'qa'
+    description = 'Показывает историю запусков тестов из базы данных.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'chess.qa.QaHistory'
+    systemProperty 'qa.db.url', dbUrl
+}

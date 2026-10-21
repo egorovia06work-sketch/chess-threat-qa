@@ -1,0 +1,15 @@
+king,rook,bishop,expected
+e1,e8,a1,ROOK
+e1,a8,h4,BISHOP
+e1,e8,h4,BOTH
+e1,b8,h8,NONE
+e1,e8,e4,NONE
+e1,c3,a5,NONE
+a1,a8,a4,NONE
+d4,d8,g7,BOTH
+d4,a5,b6,BISHOP
+h8,a8,b1,ROOK
+c3,f6,a5,BISHOP
+c3,c7,c5,NONE
+g2,b7,e4,BISHOP
+g2,g7,a7,ROOK

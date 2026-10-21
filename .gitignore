@@ -1,0 +1,5 @@
+# Gradle
+.gradle
+build
+# база данных QA создаётся задачей initDb
+qa/qa.db
